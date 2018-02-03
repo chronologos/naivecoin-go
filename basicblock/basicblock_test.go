@@ -4,6 +4,38 @@ import (
 	"testing"
 )
 
+func TestgetConseqZeroes(t *testing.T) {
+	if getConseqZeroes(byte(0)) != 8 {
+		t.Fail()
+	}
+	if getConseqZeroes(byte(240)) != 0 {
+		t.Fail()
+	}
+	if getConseqZeroes(byte(15)) != 4 {
+		t.Fail()
+	}
+	if getConseqZeroes(byte(1)) != 7 {
+		t.Fail()
+	}
+}
+
+func TestHashesMatchDifficulties(t *testing.T) {
+	hash1 := []byte{79, 0}
+	hash2 := []byte{0, 1}
+	if hashMatchesDifficulty(4, hash1) {
+		t.Fail()
+	}
+	if !hashMatchesDifficulty(0, hash1) {
+		t.Fail()
+	}
+	if hashMatchesDifficulty(16, hash2) {
+		t.Fail()
+	}
+	if !hashMatchesDifficulty(15, hash2) {
+		t.Fail()
+	}
+}
+
 func TestEmptyBlockchain(t *testing.T) {
 	blockChain := []BasicBlock{}
 	if ValidBasicBlockchain(blockChain) {
@@ -14,7 +46,7 @@ func TestEmptyBlockchain(t *testing.T) {
 func TestValidBlockchain(t *testing.T) {
 	blockChain := []BasicBlock{GenesisBlock}
 	for i := 0; i < 5; i++ {
-		blockChain = append(blockChain, blockChain[len(blockChain)-1].GenerateNextBasicBlock([]byte{}))
+		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
 	if !ValidBasicBlockchain(blockChain) {
 		t.Fail()
@@ -24,7 +56,7 @@ func TestValidBlockchain(t *testing.T) {
 func TestInvalidExtraBlock(t *testing.T) {
 	blockChain := []BasicBlock{GenesisBlock}
 	for i := 0; i < 5; i++ {
-		blockChain = append(blockChain, blockChain[len(blockChain)-1].GenerateNextBasicBlock([]byte{}))
+		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
 	blockChain = append(blockChain, BasicBlock{})
 	if ValidBasicBlockchain(blockChain) {
@@ -35,20 +67,9 @@ func TestInvalidExtraBlock(t *testing.T) {
 func TestInvalidGenesisBlock(t *testing.T) {
 	blockChain := []BasicBlock{GenesisBlock}
 	for i := 0; i < 5; i++ {
-		blockChain = append(blockChain, blockChain[len(blockChain)-1].GenerateNextBasicBlock([]byte{}))
+		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
 	blockChain[0].Data = []byte("DEADBEEF")
-	if ValidBasicBlockchain(blockChain) {
-		t.Fail()
-	}
-}
-
-func TestInvalidGenesisBlock2(t *testing.T) {
-	blockChain := []BasicBlock{GenesisBlock}
-	for i := 0; i < 5; i++ {
-		blockChain = append(blockChain, blockChain[len(blockChain)-1].GenerateNextBasicBlock([]byte{}))
-	}
-	blockChain[0].Data = []byte("this is not genesis block")
 	if ValidBasicBlockchain(blockChain) {
 		t.Fail()
 	}
