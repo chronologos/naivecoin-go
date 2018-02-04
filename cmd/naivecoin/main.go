@@ -16,5 +16,5 @@ func main() {
 	}
 
 	fmt.Print(blockChain)
-	fmt.Print(nc.ValidBasicBlockchain(blockChain))
+	fmt.Print(nc.IsIsValidBasicBlockchain(blockChain))
 }

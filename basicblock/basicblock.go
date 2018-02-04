@@ -13,7 +13,7 @@ import (
 const BlockGenerationInterval int = 10
 
 // DifficultyAdjustmentInterval in blocks, defines how often the difficulty should adjust to the increasing or decreasing network hashrate. (in Bitcoin this value is 2016 blocks)
-const DifficultyAdjustmentInterval int = 10
+const DifficultyAdjustmentInterval int = 1
 
 // GenesisBlock is the very first block, duh! Package globals are usually bad!
 var GenesisBlock BasicBlock
@@ -109,28 +109,28 @@ func (bb *BasicBlock) getHash() [32]byte { //TODO
 	return bb.Hash
 }
 
-// ValidBasicBlock makes sure that the current BasicBlock has the correct Hash and PreviousHash.
-func (bb *BasicBlock) ValidBasicBlock(prev *BasicBlock) bool {
+// IsValidBasicBlock makes sure that the current BasicBlock has the correct Hash and PreviousHash.
+func (bb *BasicBlock) IsValidBasicBlock(prev *BasicBlock) bool {
 	computedHash := bb.calculateHash()
-	return bb.PreviousHash == prev.Hash && computedHash == bb.Hash && hashMatchesDifficulty(bb.Difficulty, bb.Hash[:])
+	return bb.PreviousHash == prev.Hash && computedHash == bb.Hash && hashMatchesDifficulty(bb.Difficulty, bb.Hash[:]) && bb.isValidTimestamp(prev)
 }
 
-// ValidBasicBlockchain makes sure that the entire blockChain is valid
-func ValidBasicBlockchain(bc []BasicBlock) bool {
+// IsValidBasicBlockchain makes sure that the entire blockChain is valid
+func IsValidBasicBlockchain(bc []BasicBlock) bool {
 	if len(bc) < 1 {
-		debug("ValidBasicBlockchain: Length of blockchain is 0.\n")
+		debug("IsValidBasicBlockchain: Length of blockchain is 0.\n")
 		return false
 	}
 	if !bc[0].deepEqual(&GenesisBlock) {
-		debug("ValidBasicBlockchain: Wrong genesis block.\n")
+		debug("IsValidBasicBlockchain: Wrong genesis block.\n")
 		return false
 	}
 	for i, blk := range bc {
 		if i == 0 { // genesis block is already verified.
 			continue
 		} else {
-			if !blk.ValidBasicBlock(&bc[i-1]) {
-				debug("ValidBasicBlockchain: Block %d was invalid.\n", i)
+			if !blk.IsValidBasicBlock(&bc[i-1]) {
+				debug("IsValidBasicBlockchain: Block %d was invalid.\n", i)
 				return false
 			}
 		}
@@ -138,9 +138,14 @@ func ValidBasicBlockchain(bc []BasicBlock) bool {
 	return true
 }
 
+// isValidTimestamp is used to mitigate attacks in which a false timestamp is introduced in order to manipulate the difficulty. A block is valid, if the timestamp is at most 1 min in the future from the time we perceive. A block in the chain is valid, if the timestamp is at most 1 min in the past of the previous block.
+func (bb *BasicBlock) isValidTimestamp(prev *BasicBlock) bool {
+	return bb.Timestamp.After(prev.Timestamp.Add(-60*time.Second)) && bb.Timestamp.Before(time.Now().Add(60*time.Second))
+}
+
 // PossiblyReplace accepts a "contender blockchain", if the contender is valid AND longer than the blockchain we currently have, we replace it. Assumption: orig is valid.
 func PossiblyReplace(orig []BasicBlock, next []BasicBlock) []BasicBlock {
-	if !ValidBasicBlockchain(next) || !(len(next) > len(orig)) {
+	if !IsValidBasicBlockchain(next) || !(len(next) > len(orig)) {
 		return orig
 	}
 	return next
@@ -222,4 +227,32 @@ func (bb *BasicBlock) FindBlock(data []byte) BasicBlock {
 		nonceInt++
 	}
 
+}
+
+func getDifficulty(bc []BasicBlock) (int32, error) {
+	if len(bc) == 0 {
+		return 0, nil // TODO implement errors
+	}
+	latestBlock := bc[len(bc)-1]
+	if latestBlock.Index%int32(DifficultyAdjustmentInterval) == 0 && latestBlock.Index != 0 {
+		return getAdjustedDifficulty(latestBlock, bc)
+	} else {
+		return latestBlock.Difficulty, nil
+	}
+}
+
+func getAdjustedDifficulty(latestBlock BasicBlock, bc []BasicBlock) (int32, error) {
+	prevAdjustmentBlock := bc[len(bc)-DifficultyAdjustmentInterval]
+	timeExpected := BlockGenerationInterval * DifficultyAdjustmentInterval
+	timeTaken := latestBlock.Timestamp.Second() - prevAdjustmentBlock.Timestamp.Second()
+	if timeTaken < timeExpected/2 {
+		log.Println("difficulty up.")
+		return prevAdjustmentBlock.Difficulty + 1, nil
+	} else if timeTaken > timeExpected*2 {
+		log.Println("difficulty down.")
+		return prevAdjustmentBlock.Difficulty - 1, nil
+	} else {
+		log.Println("difficulty unchanged.")
+		return prevAdjustmentBlock.Difficulty, nil
+	}
 }
