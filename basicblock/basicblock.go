@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"time"
 )
 
@@ -13,13 +14,15 @@ import (
 const BlockGenerationInterval int = 10
 
 // DifficultyAdjustmentInterval in blocks, defines how often the difficulty should adjust to the increasing or decreasing network hashrate. (in Bitcoin this value is 2016 blocks)
-const DifficultyAdjustmentInterval int = 1
+const DifficultyAdjustmentInterval int = 2
+
+var Difficulty int32 = 2
 
 // GenesisBlock is the very first block, duh! Package globals are usually bad!
 var GenesisBlock BasicBlock
 
 func init() {
-	here, err := time.LoadLocation("Singapore")
+	here, err := time.LoadLocation("UTC")
 	if err != nil {
 		debug("error!") // TODO
 		return
@@ -33,12 +36,6 @@ func init() {
 	}
 }
 
-// Hashable32 is wrapper over our implementations TODO
-type Hashable32 interface {
-	calculateHash() [32]byte
-	getHash() [32]byte
-}
-
 // BasicBlock - Implementation of a block of cryptocurrency!
 type BasicBlock struct {
 	Index        int32
@@ -50,8 +47,19 @@ type BasicBlock struct {
 	Nonce        []byte
 }
 
+// BlockChain basic implementation
+type BlockChain []BasicBlock
+
 func (bb *BasicBlock) String() string {
 	return fmt.Sprintf("(Index: %d, Hash: %x, PreviousHash: %x, Timestamp: %s, Data: %x, Difficulty: %d, Nonce %x)", bb.Index, bb.Hash, bb.PreviousHash, bb.Timestamp.Format(time.RFC3339), bb.Data, bb.Difficulty, bb.Nonce)
+}
+
+func (bc BlockChain) String() string {
+	var s string
+	for _, blk := range bc {
+		s += blk.String() + "\n"
+	}
+	return s
 }
 
 func (bb *BasicBlock) deepEqual(bb2 *BasicBlock) bool {
@@ -70,6 +78,18 @@ func (bb *BasicBlock) deepEqual(bb2 *BasicBlock) bool {
 		return true
 	}
 	return false
+}
+
+func deepEqual(bc1, bc2 []BasicBlock) bool {
+	if len(bc1) != len(bc2) {
+		return false
+	}
+	for i, b := range bc1 {
+		if !b.deepEqual(&bc2[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (bb *BasicBlock) calculateHash() [32]byte {
@@ -105,18 +125,14 @@ func (bb *BasicBlock) calculateHash() [32]byte {
 	return ret
 }
 
-func (bb *BasicBlock) getHash() [32]byte { //TODO
-	return bb.Hash
-}
-
-// IsValidBasicBlock makes sure that the current BasicBlock has the correct Hash and PreviousHash.
-func (bb *BasicBlock) IsValidBasicBlock(prev *BasicBlock) bool {
+// IsValid makes sure that the current BasicBlock has the correct Hash and PreviousHash.
+func (bb *BasicBlock) IsValid(prev *BasicBlock) bool {
 	computedHash := bb.calculateHash()
 	return bb.PreviousHash == prev.Hash && computedHash == bb.Hash && hashMatchesDifficulty(bb.Difficulty, bb.Hash[:]) && bb.isValidTimestamp(prev)
 }
 
-// IsValidBasicBlockchain makes sure that the entire blockChain is valid
-func IsValidBasicBlockchain(bc []BasicBlock) bool {
+// IsValid makes sure that the entire blockChain is valid
+func (bc BlockChain) IsValid() bool {
 	if len(bc) < 1 {
 		debug("IsValidBasicBlockchain: Length of blockchain is 0.\n")
 		return false
@@ -129,7 +145,7 @@ func IsValidBasicBlockchain(bc []BasicBlock) bool {
 		if i == 0 { // genesis block is already verified.
 			continue
 		} else {
-			if !blk.IsValidBasicBlock(&bc[i-1]) {
+			if !blk.IsValid(&bc[i-1]) {
 				debug("IsValidBasicBlockchain: Block %d was invalid.\n", i)
 				return false
 			}
@@ -143,9 +159,20 @@ func (bb *BasicBlock) isValidTimestamp(prev *BasicBlock) bool {
 	return bb.Timestamp.After(prev.Timestamp.Add(-60*time.Second)) && bb.Timestamp.Before(time.Now().Add(60*time.Second))
 }
 
-// PossiblyReplace accepts a "contender blockchain", if the contender is valid AND longer than the blockchain we currently have, we replace it. Assumption: orig is valid.
-func PossiblyReplace(orig []BasicBlock, next []BasicBlock) []BasicBlock {
-	if !IsValidBasicBlockchain(next) || !(len(next) > len(orig)) {
+// PossiblyReplace accepts a "contender blockchain", if the contender is valid AND has a larger cumulative difficulty than the blockchain we currently have, we replace it. Assumption: orig is valid.
+func PossiblyReplace(orig BlockChain, next BlockChain) []BasicBlock {
+	if !next.IsValid() {
+		return orig
+	}
+	var cumOrig int32
+	var cumNext int32
+	for _, x := range orig {
+		cumOrig += int32(math.Pow(2, float64(x.Difficulty)))
+	}
+	for _, x := range next {
+		cumNext += int32(math.Pow(2, float64(x.Difficulty)))
+	}
+	if cumOrig > cumNext {
 		return orig
 	}
 	return next
@@ -202,12 +229,11 @@ func (bb *BasicBlock) FindBlock(data []byte) BasicBlock {
 		Index:        bb.Index + 1,
 		PreviousHash: bb.Hash,
 		Timestamp:    time.Now(),
-		Difficulty:   bb.Difficulty,
+		Difficulty:   Difficulty,
 		Nonce:        []byte{0},
 		Data:         data,
 	}
 	for {
-		time.Sleep(10 * time.Millisecond) // TODO
 		var buf bytes.Buffer
 		err := binary.Write(&buf, binary.LittleEndian, nonceInt)
 		if err != nil {
@@ -220,16 +246,14 @@ func (bb *BasicBlock) FindBlock(data []byte) BasicBlock {
 		hash := result.calculateHash()
 		debug("h: %08b\n", hash)
 
-		if hashMatchesDifficulty(result.Difficulty, hash[:]) { // TODO how and when to change difficulty?
-			result.Hash = hash
-			return *result
+		if hashMatchesDifficulty(result.Difficulty, hash[:]) {
 		}
 		nonceInt++
 	}
-
 }
 
-func getDifficulty(bc []BasicBlock) (int32, error) {
+// GetDifficulty calculates if the current difficulty needs to be adjusted.
+func GetDifficulty(bc BlockChain) (int32, error) {
 	if len(bc) == 0 {
 		return 0, nil // TODO implement errors
 	}
@@ -241,7 +265,7 @@ func getDifficulty(bc []BasicBlock) (int32, error) {
 	}
 }
 
-func getAdjustedDifficulty(latestBlock BasicBlock, bc []BasicBlock) (int32, error) {
+func getAdjustedDifficulty(latestBlock BasicBlock, bc BlockChain) (int32, error) {
 	prevAdjustmentBlock := bc[len(bc)-DifficultyAdjustmentInterval]
 	timeExpected := BlockGenerationInterval * DifficultyAdjustmentInterval
 	timeTaken := latestBlock.Timestamp.Second() - prevAdjustmentBlock.Timestamp.Second()

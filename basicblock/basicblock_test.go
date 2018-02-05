@@ -41,30 +41,30 @@ func TestHashesMatchDifficulties(t *testing.T) {
 }
 
 func TestEmptyBlockchain(t *testing.T) {
-	blockChain := []BasicBlock{}
-	if IsValidBasicBlockchain(blockChain) {
+	blockChain := BlockChain{}
+	if blockChain.IsValid() {
 		t.Fail()
 	}
 }
 
 func TestInvalidExtraBlock(t *testing.T) {
-	blockChain := []BasicBlock{GenesisBlock}
+	blockChain := BlockChain{GenesisBlock}
 	for i := 0; i < 5; i++ {
 		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
 	blockChain = append(blockChain, BasicBlock{})
-	if IsValidBasicBlockchain(blockChain) {
+	if blockChain.IsValid() {
 		t.Fail()
 	}
 }
 
 func TestInvalidGenesisBlock(t *testing.T) {
-	blockChain := []BasicBlock{GenesisBlock}
+	blockChain := BlockChain{GenesisBlock}
 	for i := 0; i < 5; i++ {
 		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
 	blockChain[0].Data = []byte("DEADBEEF")
-	if IsValidBasicBlockchain(blockChain) {
+	if blockChain.IsValid() {
 		t.Fail()
 	}
 }
@@ -82,16 +82,16 @@ func TestBlockValidation(t *testing.T) {
 	TestBlock2TimestampOk.Timestamp = TestBlock2TimestampOk.Timestamp.Add(-5 * time.Second)
 	// log.Printf("invalid timestamps: %s and %s \n", TestBlock2TimestampOk.Timestamp.String(), TestBlock1.Timestamp.String())
 
-	if !TestBlock2.IsValidBasicBlock(&TestBlock1) {
+	if !TestBlock2.IsValid(&TestBlock1) {
 		t.Fail()
 	}
-	if TestBlock2HashWrong.IsValidBasicBlock(&TestBlock1) {
+	if TestBlock2HashWrong.IsValid(&TestBlock1) {
 		t.Fail()
 	}
-	if TestBlock2.IsValidBasicBlock(&TestBlock1HashWrong) {
+	if TestBlock2.IsValid(&TestBlock1HashWrong) {
 		t.Fail()
 	}
-	if TestBlock2MutatedData.IsValidBasicBlock(&TestBlock1) {
+	if TestBlock2MutatedData.IsValid(&TestBlock1) {
 		t.Fail()
 	}
 	if TestBlock2TimestampTooEarly.isValidTimestamp(&TestBlock1) {
@@ -102,37 +102,28 @@ func TestBlockValidation(t *testing.T) {
 	}
 }
 
-func TestTimestampAttack(t *testing.T) {
-	blockChain := []BasicBlock{GenesisBlock}
-	for i := 0; i < 5; i++ {
-		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
-	}
-	blockChain[len(blockChain)-1].Timestamp = blockChain[len(blockChain)-1].Timestamp.Add(-61 * time.Second)
-	if IsValidBasicBlockchain(blockChain) {
-		t.Fail()
-	}
-}
-
 func TestValidBlockchain(t *testing.T) {
-	blockChain := []BasicBlock{GenesisBlock}
+	blockChain := BlockChain{GenesisBlock}
 	for i := 0; i < 5; i++ {
 		blockChain = append(blockChain, blockChain[len(blockChain)-1].FindBlock([]byte{}))
 	}
-	if !IsValidBasicBlockchain(blockChain) {
+	if !blockChain.IsValid() {
 		t.Fail()
 	}
 }
 
-// func TestBlockchainReplaced(t *testing.T) {
-// 	blockChainShort := []BasicBlock{GenesisBlock}
-// 	blockChainLong := []BasicBlock{GenesisBlock}
-//
-// 	for i := 0; i < 1; i++ {
-// 		blockChainLong = append(blockChainLong, blockChainLong[len(blockChainLong)-1].GenerateNextBasicBlock([]byte{}))
-// 	}
-//
-// 	res := PossiblyReplace(blockChainShort, blockChainLong)
-// 	if !deepEqual(res, blockChainShort) {
-// 		t.Fail()
-// 	}
-// }
+func TestBlockchainReplace(t *testing.T) {
+	blockChainShort := []BasicBlock{GenesisBlock}
+	blockChainLong := []BasicBlock{GenesisBlock}
+	for i := 0; i < 3; i++ {
+		blockChainShort = append(blockChainShort, blockChainShort[len(blockChainShort)-1].FindBlock([]byte{}))
+	}
+	for i := 0; i < 5; i++ {
+		blockChainLong = append(blockChainLong, blockChainLong[len(blockChainLong)-1].FindBlock([]byte{}))
+	}
+
+	res := PossiblyReplace(blockChainShort, blockChainLong)
+	if !deepEqual(res, blockChainLong) {
+		t.Fail()
+	}
+}
