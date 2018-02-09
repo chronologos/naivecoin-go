@@ -14,3 +14,6 @@ curl -X POST -d "data=bob" -H 'Content-Type: application/x-www-form-urlencoded' 
 ```
 
 Mine a block with data = "bob"
+
+## TODO
+1. Find out are coinbase tx inserted into the blockchain and when `validateCoinbaseTx` is called.

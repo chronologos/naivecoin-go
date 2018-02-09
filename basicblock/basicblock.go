@@ -115,7 +115,10 @@ func (bb *BasicBlock) calculateHash() [32]byte {
 
 	hashInput.Write(bb.Nonce)
 
-	h.Write(hashInput.Bytes())
+	_, err = h.Write(hashInput.Bytes())
+	if err != nil {
+		log.Fatalln("sha256 failed")
+	}
 
 	res := h.Sum(nil)
 	var ret [32]byte
@@ -247,6 +250,8 @@ func (bb *BasicBlock) FindBlock(data []byte) BasicBlock {
 		debug("h: %08b\n", hash)
 
 		if hashMatchesDifficulty(result.Difficulty, hash[:]) {
+			result.Hash = hash
+			return *result
 		}
 		nonceInt++
 	}
